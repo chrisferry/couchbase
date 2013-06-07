@@ -54,6 +54,7 @@ case node['platform']
 when "debian", "ubuntu"
   dpkg_package File.join(Chef::Config[:file_cache_path], node['couchbase']['server']['package_file'])
 when "redhat", "centos", "scientific", "amazon", "fedora"
+  package "openssl098e" # Couchbase >= 2.0.0 requires libssl.so.6 and libcrypto.so.6
   yum_package File.join(Chef::Config[:file_cache_path], node['couchbase']['server']['package_file'])
 when "windows"
 
@@ -100,6 +101,25 @@ directory node['couchbase']['server']['database_path'] do
   group "couchbase"
   mode 0755
   recursive true
+end
+
+# On initial couchbase install server is not up and listening yet.
+# So we need to wait a bit until it comes online
+ruby_block "netstat" do
+  block do
+    10.times do
+      begin
+        s = TCPSocket.new("127.0.0.1", 8091)
+        s.close()
+        Chef::Log.info("inside socket open")
+        break
+      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH        
+        Chef::Log.debug("service[couchbase] still not listening (port 8091)")
+      end
+      sleep 1
+    end
+  end
+  action :create
 end
 
 couchbase_node "self" do
